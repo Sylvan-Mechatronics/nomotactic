@@ -26,6 +26,13 @@ interface StreamStartResponse {
   port: string;
   /** Access token the stream server requires as ?token= on every request. */
   token?: string | null;
+  /**
+   * Path (relative to the device base URL) that relays the MJPEG stream
+   * over the same trusted origin used for the REST API — same TLS cert
+   * (or AP-mode cleartext exception) the app already reached to start the
+   * stream, so no separate host/port trust decision is needed to view it.
+   */
+  live_path?: string | null;
   timestamp: string;
 }
 
@@ -33,17 +40,17 @@ interface StreamStartResponse {
 
 export function VideoFeed() {
   const [active, setActive] = useState(false);
-  /** Base URL returned by stream/start (without /stream suffix). */
+  /** Device base URL the stream is relayed through (same origin as the REST API). */
   const [streamBaseUrl, setStreamBaseUrl] = useState<string | null>(null);
-  /** Access token the stream server requires on every request. */
-  const [streamToken, setStreamToken] = useState<string | null>(null);
+  /** Path (+ query) on streamBaseUrl that serves the MJPEG stream. */
+  const [streamPath, setStreamPath] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const sendCommand = useDeviceCommand();
 
-  const tokenQuery = streamToken !== null ? `?token=${encodeURIComponent(streamToken)}` : "";
   /** Full MJPEG URL consumed by the <img> tag or shown to the user. */
-  const mjpegUrl = streamBaseUrl !== null ? `${streamBaseUrl}/stream${tokenQuery}` : null;
+  const mjpegUrl =
+    streamBaseUrl !== null && streamPath !== null ? `${streamBaseUrl}${streamPath}` : null;
 
   async function toggleStream() {
     if (busy) return;
@@ -54,20 +61,18 @@ export function VideoFeed() {
         await sendCommand(ENDPOINTS.STREAM_STOP, {});
         setActive(false);
         setStreamBaseUrl(null);
-        setStreamToken(null);
+        setStreamPath(null);
       } else {
         const resp = await sendCommand<StreamStartResponse>(ENDPOINTS.STREAM_START, {});
-        // resp.url may contain the Pi's bind-all address (0.0.0.0). Reconstruct
-        // the URL using the device's reachable hostname and the stream port.
-        let baseUrl = resp.url;
-        try {
-          const deviceHostname = new URL(getDeviceBaseUrl()).hostname;
-          baseUrl = `http://${deviceHostname}:${resp.port}`;
-        } catch {
-          // Malformed device URL — fall back to what the server returned
-        }
-        setStreamBaseUrl(baseUrl);
-        setStreamToken(resp.token ?? null);
+        // Always relay through the device's own trusted base URL — never
+        // resp.url/host/port directly, which describe the stream server's
+        // internal bind address and may be unreachable or untrusted from
+        // outside the device (see nomothetic StreamStartResponse.live_path).
+        const path =
+          resp.live_path ??
+          `/stream${resp.token ? `?token=${encodeURIComponent(resp.token)}` : ""}`;
+        setStreamBaseUrl(getDeviceBaseUrl());
+        setStreamPath(path);
         setActive(true);
       }
     } catch (err) {
@@ -89,9 +94,9 @@ export function VideoFeed() {
     }
 
     // Mobile: render the MJPEG stream inside a WebView using a minimal inline
-    // HTML page. The img src="/stream?token=…" is resolved against streamBaseUrl
-    // as baseUrl, so the native HTTP request goes directly to the stream server.
-    const streamHtml = `<!DOCTYPE html><html><head><meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1"></head><body style="margin:0;padding:0;background:#000;overflow:hidden"><img src="/stream${tokenQuery}" style="width:100%;height:100%;object-fit:cover;display:block" /></body></html>`;
+    // HTML page. The img src is resolved against streamBaseUrl as baseUrl, so
+    // the native HTTP request goes to the same trusted origin as the REST API.
+    const streamHtml = `<!DOCTYPE html><html><head><meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1"></head><body style="margin:0;padding:0;background:#000;overflow:hidden"><img src="${streamPath ?? ""}" style="width:100%;height:100%;object-fit:cover;display:block" /></body></html>`;
     return (
       <WebView
         source={{ html: streamHtml, baseUrl: streamBaseUrl ?? "" }}
