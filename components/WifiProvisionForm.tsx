@@ -80,7 +80,7 @@ export function WifiProvisionForm() {
     return () => {
       if (pollTimer.current !== null) clearTimeout(pollTimer.current);
     };
-  }, [status, deviceUrl]);
+  }, [status, deviceUrl, confirmDeviceUrl]);
 
   async function handleSubmit() {
     if (!ssid.trim()) return;

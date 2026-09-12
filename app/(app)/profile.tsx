@@ -51,6 +51,11 @@ export default function ProfileScreen() {
   }, []);
 
   useEffect(() => {
+    // Fetch-on-mount/auth-change: load() sets isLoading/error synchronously
+    // before its first await, which react-hooks/set-state-in-effect flags as
+    // a cascading-render risk. There's no external subscription to move this
+    // into, so the flagged pattern is the fix.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     if (isAuthenticated) load();
     else setIsLoading(false);
   }, [isAuthenticated, load]);

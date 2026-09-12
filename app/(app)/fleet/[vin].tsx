@@ -60,6 +60,11 @@ export default function FleetDeviceScreen() {
   }, [vin]);
 
   useEffect(() => {
+    // Fetch-on-mount/vin-change: load() sets isLoading/error synchronously
+    // before its first await, which react-hooks/set-state-in-effect flags as
+    // a cascading-render risk. There's nothing external to subscribe to here
+    // (no vin change without a fresh fetch), so the flagged pattern is the fix.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     load();
   }, [load]);
 
