@@ -227,8 +227,13 @@ export interface DeviceIdentity {
   /** Nomothetic package version, reported as device firmware version. */
   firmware_version: string;
   /** Short-lived proof JWT to submit alongside the VIN when registering with
-   *  the central fleet API. Valid for 5 minutes. */
+   *  the central fleet API. Valid for 5 minutes. Signed with the device's
+   *  identity key (alg EdDSA). */
   registration_proof: string;
+  /** PEM public key matching the proof signature; central verifies the proof
+   *  against it and pins it to the VIN on first registration. Null only on
+   *  legacy device builds. */
+  device_public_key?: string | null;
 }
 
 export interface DeviceSessionResetResponse {
@@ -253,9 +258,15 @@ export async function registerDeviceWithFleet(
   vin: string,
   model: string,
   registrationProof: string,
+  devicePublicKey?: string | null,
 ): Promise<void> {
   await centralApi("/api/fleet/devices", {
     method: "POST",
-    body: { vin, model, registration_proof: registrationProof },
+    body: {
+      vin,
+      model,
+      registration_proof: registrationProof,
+      ...(devicePublicKey ? { device_public_key: devicePublicKey } : {}),
+    },
   });
 }

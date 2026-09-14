@@ -161,8 +161,9 @@ fetch data independently and handle their own error states.
 
 When the device is not connected to a known Wi-Fi network, the Soft AP watchdog
 (`nomon-softap-watchdog.timer` in nomopractic) broadcasts a WPA2 hotspot named
-`nomon-<last4-of-MAC>`. The passphrase equals the device pairing secret shown in
-the nomothetic startup log.
+`nomon-<last4-of-MAC>`. The passphrase is the long random Soft AP passphrase
+written to `/run/nomothetic/ap-passphrase` on the Pi (it is deliberately not the
+8-digit pairing code, which is only typed when pairing over the home network).
 
 **Pairing flow (mobile or web):**
 

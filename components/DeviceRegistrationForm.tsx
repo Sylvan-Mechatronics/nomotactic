@@ -48,7 +48,12 @@ export function DeviceRegistrationForm({ isPaired, onRetry, onRegistered }: Devi
         await pairWithDevice(secret.trim(), displayName.trim());
       }
       const identity = await getDeviceIdentity();
-      await registerDeviceWithFleet(identity.vin, identity.model, identity.registration_proof);
+      await registerDeviceWithFleet(
+        identity.vin,
+        identity.model,
+        identity.registration_proof,
+        identity.device_public_key,
+      );
       await onRegistered();
     } catch (err: unknown) {
       console.error("[DeviceRegistrationForm] Error during registration:", err);
