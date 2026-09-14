@@ -40,28 +40,41 @@ export default function FleetDeviceScreen() {
   const [error, setError] = useState<string | null>(null);
   const [confirmingRemove, setConfirmingRemove] = useState(false);
   const [removing, setRemoving] = useState(false);
-
-  const load = useCallback(async () => {
-    if (!vin) return;
-    setIsLoading(true);
-    setError(null);
-    try {
-      const [d, r] = await Promise.all([
-        getFleetDevice(vin),
-        getDeviceTelemetry(vin, { limit: 100 }).catch(() => [] as TelemetryReading[]),
-      ]);
-      setDetail(d);
-      setReadings(r);
-    } catch (err) {
-      setError(err instanceof ApiRequestError ? err.message : "Failed to load device");
-    } finally {
-      setIsLoading(false);
-    }
-  }, [vin]);
+  /** Bumped by Retry to re-run the fetch effect. */
+  const [reloadKey, setReloadKey] = useState(0);
 
   useEffect(() => {
-    load();
-  }, [load]);
+    if (!vin) return;
+    // Ignore a response that lands after vin changed, a retry, or unmount.
+    let ignore = false;
+    async function fetchDevice(deviceVin: string) {
+      try {
+        const [d, r] = await Promise.all([
+          getFleetDevice(deviceVin),
+          getDeviceTelemetry(deviceVin, { limit: 100 }).catch(() => [] as TelemetryReading[]),
+        ]);
+        if (ignore) return;
+        setDetail(d);
+        setReadings(r);
+      } catch (err) {
+        if (!ignore) {
+          setError(err instanceof ApiRequestError ? err.message : "Failed to load device");
+        }
+      } finally {
+        if (!ignore) setIsLoading(false);
+      }
+    }
+    fetchDevice(vin);
+    return () => {
+      ignore = true;
+    };
+  }, [vin, reloadKey]);
+
+  const load = useCallback(() => {
+    setIsLoading(true);
+    setError(null);
+    setReloadKey((k) => k + 1);
+  }, []);
 
   const handleRemove = useCallback(async () => {
     if (!vin) return;

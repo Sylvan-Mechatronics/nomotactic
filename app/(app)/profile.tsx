@@ -37,23 +37,29 @@ export default function ProfileScreen() {
   const [error, setError] = useState<string | null>(null);
   const [status, setStatus] = useState<string | null>(null);
 
-  const load = useCallback(async () => {
-    setIsLoading(true);
-    try {
-      const p = await getProfile();
-      setProfile(p);
-      setDisplayName(p.display_name);
-    } catch (err) {
-      setError(err instanceof ApiRequestError ? err.message : "Failed to load profile");
-    } finally {
-      setIsLoading(false);
-    }
-  }, []);
-
   useEffect(() => {
-    if (isAuthenticated) load();
-    else setIsLoading(false);
-  }, [isAuthenticated, load]);
+    if (!isAuthenticated) return;
+    // Ignore a response that lands after sign-out or unmount.
+    let ignore = false;
+    async function loadProfile() {
+      try {
+        const p = await getProfile();
+        if (ignore) return;
+        setProfile(p);
+        setDisplayName(p.display_name);
+      } catch (err) {
+        if (!ignore) {
+          setError(err instanceof ApiRequestError ? err.message : "Failed to load profile");
+        }
+      } finally {
+        if (!ignore) setIsLoading(false);
+      }
+    }
+    loadProfile();
+    return () => {
+      ignore = true;
+    };
+  }, [isAuthenticated]);
 
   const handleSaveName = useCallback(async () => {
     setSavingName(true);
@@ -109,7 +115,7 @@ export default function ProfileScreen() {
       {error !== null && <Text style={styles.errorText}>{error}</Text>}
       {status !== null && <Text style={styles.statusText}>{status}</Text>}
 
-      {isLoading ? (
+      {isAuthenticated && isLoading ? (
         <ActivityIndicator color={colors.primary} size="large" style={styles.loader} />
       ) : (
         <>

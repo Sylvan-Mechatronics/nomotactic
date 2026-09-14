@@ -35,29 +35,42 @@ export function CalibrationCard() {
   const [error, setError] = useState<string | null>(null);
   const [status, setStatus] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
-
-  const load = useCallback(async () => {
-    setIsLoading(true);
-    setError(null);
-    try {
-      const snap = await getCalibration();
-      setSnapshot(snap);
-      const norm = await getNormalizedGrayscale().catch(() => null);
-      setNormalized(norm);
-    } catch (err) {
-      setError(
-        err instanceof ApiRequestError
-          ? `Device not reachable (${err.message})`
-          : "Device not reachable",
-      );
-    } finally {
-      setIsLoading(false);
-    }
-  }, []);
+  /** Bumped by Retry to re-run the fetch effect. */
+  const [reloadKey, setReloadKey] = useState(0);
 
   useEffect(() => {
-    load();
-  }, [load]);
+    // Ignore a response that lands after a retry or unmount.
+    let ignore = false;
+    async function fetchCalibration() {
+      try {
+        const snap = await getCalibration();
+        if (ignore) return;
+        setSnapshot(snap);
+        const norm = await getNormalizedGrayscale().catch(() => null);
+        if (!ignore) setNormalized(norm);
+      } catch (err) {
+        if (!ignore) {
+          setError(
+            err instanceof ApiRequestError
+              ? `Device not reachable (${err.message})`
+              : "Device not reachable",
+          );
+        }
+      } finally {
+        if (!ignore) setIsLoading(false);
+      }
+    }
+    fetchCalibration();
+    return () => {
+      ignore = true;
+    };
+  }, [reloadKey]);
+
+  const load = useCallback(() => {
+    setIsLoading(true);
+    setError(null);
+    setReloadKey((k) => k + 1);
+  }, []);
 
   const runAction = useCallback(async (fn: () => Promise<void>, okMessage: string) => {
     setBusy(true);

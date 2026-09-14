@@ -8,6 +8,7 @@ module.exports = {
       {
         tsconfig: {
           strict: true,
+          types: ["jest", "node"],
           module: "commonjs",
           moduleResolution: "node",
           esModuleInterop: true,
