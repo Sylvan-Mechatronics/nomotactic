@@ -15,6 +15,7 @@ import { Platform } from "react-native";
 
 import { DEVICE_API_URL, SOFT_AP_URL } from "@/constants/config";
 import { centralApi, deleteDeviceSession, deviceApi, getDeviceBaseUrl, setDeviceAccessToken, setDeviceBaseUrl, setDeviceTokenAccessors, setTokenAccessors } from "@/lib/api";
+import { normaliseDeviceUrl } from "@/lib/deviceUrl";
 import { changePassword as apiChangePassword, updateProfile as apiUpdateProfile } from "@/lib/profile";
 
 // ---------------------------------------------------------------------------
@@ -189,10 +190,13 @@ export function AuthProvider({ children }: AuthProviderProps) {
       // version of the app and are not resolvable in a browser context.
       const storedDeviceUrl = await storage.get(STORAGE_KEY_DEVICE_URL);
       const isMdns = storedDeviceUrl !== null && storedDeviceUrl.includes(".local");
-      if (isMdns) {
+      // Re-validate on restore so a value written by an older build (or by
+      // anything else with storage access) cannot redirect the bearer token.
+      const safeStored = storedDeviceUrl !== null && !isMdns ? normaliseDeviceUrl(storedDeviceUrl) : null;
+      if (storedDeviceUrl !== null && safeStored === null) {
         await storage.remove(STORAGE_KEY_DEVICE_URL);
       }
-      const activeDeviceUrl = (storedDeviceUrl !== null && !isMdns) ? storedDeviceUrl : DEVICE_API_URL;
+      const activeDeviceUrl = safeStored ?? DEVICE_API_URL;
       setDeviceBaseUrl(activeDeviceUrl);
 
       // On web, access tokens are memory-only and not persisted to any browser
@@ -459,10 +463,15 @@ export function AuthProvider({ children }: AuthProviderProps) {
   /** Called by WifiProvisionForm once the device responds at its home-network
    * URL. Persists the URL so it survives app restarts. */
   const confirmDeviceUrl = useCallback(async (url: string): Promise<void> => {
-    const trimmed = url.trim();
-    await storage.set(STORAGE_KEY_DEVICE_URL, trimmed);
-    setDeviceBaseUrl(trimmed);
-    setState((prev) => ({ ...prev, deviceUrl: trimmed }));
+    // Only an https origin may become the persisted device URL: every later
+    // device call sends the bearer token there (review finding S-15).
+    const safe = normaliseDeviceUrl(url);
+    if (safe === null) {
+      throw new Error("Device URL must be an https:// address with no path or credentials.");
+    }
+    await storage.set(STORAGE_KEY_DEVICE_URL, safe);
+    setDeviceBaseUrl(safe);
+    setState((prev) => ({ ...prev, deviceUrl: safe }));
   }, []);
 
   const continueAsGuest = useCallback((): void => {

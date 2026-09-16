@@ -164,3 +164,33 @@ describe("registerDeviceWithFleet", () => {
     expect((err as ApiRequestError).status).toBe(400);
   });
 });
+
+// ---------------------------------------------------------------------------
+// registerDeviceWithFleet
+// ---------------------------------------------------------------------------
+
+describe("registerDeviceWithFleet", () => {
+  it("posts vin, model, proof and the device public key", async () => {
+    mockFetch.mockResolvedValueOnce(makeOkResponse({ vin: "A", model: "nomon" }, 201) as Response);
+    await registerDeviceWithFleet("A", "nomon", "p.q.r", "-----BEGIN PUBLIC KEY-----\nX\n");
+    const [url, init] = mockFetch.mock.calls[0];
+    expect(String(url)).toContain("/api/fleet/devices");
+    expect(JSON.parse(String((init as RequestInit).body))).toEqual({
+      vin: "A",
+      model: "nomon",
+      registration_proof: "p.q.r",
+      device_public_key: "-----BEGIN PUBLIC KEY-----\nX\n",
+    });
+  });
+
+  it("omits device_public_key when the device did not provide one", async () => {
+    mockFetch.mockResolvedValueOnce(makeOkResponse({ vin: "A", model: "nomon" }, 201) as Response);
+    await registerDeviceWithFleet("A", "nomon", "p.q.r", null);
+    const [, init] = mockFetch.mock.calls[0];
+    expect(JSON.parse(String((init as RequestInit).body))).toEqual({
+      vin: "A",
+      model: "nomon",
+      registration_proof: "p.q.r",
+    });
+  });
+});

@@ -68,11 +68,14 @@ export function VideoFeed() {
         // resp.url/host/port directly, which describe the stream server's
         // internal bind address and may be unreachable or untrusted from
         // outside the device (see nomothetic StreamStartResponse.live_path).
-        const path =
-          resp.live_path ??
-          `/stream${resp.token ? `?token=${encodeURIComponent(resp.token)}` : ""}`;
+        // The API origin has no /stream route, so a device too old to send
+        // live_path can't be viewed — say so instead of rendering a broken image.
+        if (!resp.live_path) {
+          await sendCommand(ENDPOINTS.STREAM_STOP, {}).catch(() => undefined);
+          throw new Error("Device software is too old to relay the stream — redeploy nomothetic");
+        }
         setStreamBaseUrl(getDeviceBaseUrl());
-        setStreamPath(path);
+        setStreamPath(resp.live_path);
         setActive(true);
       }
     } catch (err) {
