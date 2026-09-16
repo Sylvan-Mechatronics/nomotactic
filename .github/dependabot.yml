@@ -19,27 +19,23 @@ updates:
     groups:
       npm-minor-patch:
         update-types: ["minor", "patch"]
-        exclude-patterns: ["expo", "expo-*", "@expo/*", "react", "react-dom", "react-native", "react-native-*"]
-      # Expo SDK-managed packages must move together (`npx expo install --fix`
-      # on an SDK upgrade), so only patch releases come through here.
-      expo-sdk-patch:
-        patterns: ["expo", "expo-*", "@expo/*", "react", "react-dom", "react-native", "react-native-*"]
-        update-types: ["patch"]
     ignore:
+      # Expo SDK-managed packages are pinned by the SDK (see
+      # node_modules/expo/bundledNativeModules.json, often to exact versions)
+      # and must move together via `npx expo install --fix` on an SDK upgrade.
+      # Dependabot never proposes them — not even patches.
       - dependency-name: "expo"
-        update-types: ["version-update:semver-major", "version-update:semver-minor"]
       - dependency-name: "expo-*"
-        update-types: ["version-update:semver-major", "version-update:semver-minor"]
       - dependency-name: "@expo/*"
-        update-types: ["version-update:semver-major", "version-update:semver-minor"]
       - dependency-name: "react"
-        update-types: ["version-update:semver-major", "version-update:semver-minor"]
       - dependency-name: "react-dom"
-        update-types: ["version-update:semver-major", "version-update:semver-minor"]
       - dependency-name: "react-native"
-        update-types: ["version-update:semver-major", "version-update:semver-minor"]
       - dependency-name: "react-native-*"
-        update-types: ["version-update:semver-major", "version-update:semver-minor"]
+      # `expo install --check` expects jest ~29.7 / @types/jest 29.5 for SDK 57.
+      - dependency-name: "jest"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "@types/jest"
+        update-types: ["version-update:semver-major"]
       # Expo SDK 57 targets TypeScript ~6.0, and ts-jest 29 rejects TS 7.
       - dependency-name: "typescript"
         update-types: ["version-update:semver-major"]
