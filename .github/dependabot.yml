@@ -1,12 +1,48 @@
 version: 2
 # Keep GitHub Actions SHA pins and package dependencies current (review S-23).
+# Updates are grouped so a weekly run opens one Actions PR and one PR for
+# minor/patch package bumps; major package bumps still arrive one per PR so
+# they can be judged individually.
 updates:
   - package-ecosystem: github-actions
     directory: /
     schedule:
       interval: weekly
+    groups:
+      github-actions:
+        patterns: ["*"]
   - package-ecosystem: npm
     directory: /
     schedule:
       interval: weekly
     open-pull-requests-limit: 5
+    groups:
+      npm-minor-patch:
+        update-types: ["minor", "patch"]
+        exclude-patterns: ["expo", "expo-*", "@expo/*", "react", "react-dom", "react-native", "react-native-*"]
+      # Expo SDK-managed packages must move together (`npx expo install --fix`
+      # on an SDK upgrade), so only patch releases come through here.
+      expo-sdk-patch:
+        patterns: ["expo", "expo-*", "@expo/*", "react", "react-dom", "react-native", "react-native-*"]
+        update-types: ["patch"]
+    ignore:
+      - dependency-name: "expo"
+        update-types: ["version-update:semver-major", "version-update:semver-minor"]
+      - dependency-name: "expo-*"
+        update-types: ["version-update:semver-major", "version-update:semver-minor"]
+      - dependency-name: "@expo/*"
+        update-types: ["version-update:semver-major", "version-update:semver-minor"]
+      - dependency-name: "react"
+        update-types: ["version-update:semver-major", "version-update:semver-minor"]
+      - dependency-name: "react-dom"
+        update-types: ["version-update:semver-major", "version-update:semver-minor"]
+      - dependency-name: "react-native"
+        update-types: ["version-update:semver-major", "version-update:semver-minor"]
+      - dependency-name: "react-native-*"
+        update-types: ["version-update:semver-major", "version-update:semver-minor"]
+      # Expo SDK 57 targets TypeScript ~6.0, and ts-jest 29 rejects TS 7.
+      - dependency-name: "typescript"
+        update-types: ["version-update:semver-major"]
+      # eslint-config-expo 57 (via eslint-plugin-import) supports ESLint <= 9.
+      - dependency-name: "eslint"
+        update-types: ["version-update:semver-major"]
