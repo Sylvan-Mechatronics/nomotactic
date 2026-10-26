@@ -73,6 +73,11 @@ export function CommandInput() {
   const [needsKey, setNeedsKey] = useState(false);
   const [keyText, setKeyText] = useState("");
   const [isSavingKey, setIsSavingKey] = useState(false);
+  // Keyboard avoidance must follow this bar's own inputs only. The bar is
+  // mounted under every screen, so an always-on KeyboardAvoidingView would
+  // also pad it for a keyboard opened by a screen's form (e.g. pairing),
+  // inflating the bar as if it were focused.
+  const [hasFocus, setHasFocus] = useState(false);
 
   async function submit() {
     const trimmed = text.trim();
@@ -126,7 +131,7 @@ export function CommandInput() {
   const Wrapper = Platform.OS === "web" ? View : KeyboardAvoidingView;
   const wrapperProps =
     Platform.OS === "ios"
-      ? { behavior: "padding" as const, keyboardVerticalOffset: 90 }
+      ? { behavior: "padding" as const, keyboardVerticalOffset: 90, enabled: hasFocus }
       : {};
 
   const showBubble = isLoading || error !== null || notice !== null || exchange !== null;
@@ -156,6 +161,8 @@ export function CommandInput() {
               value={keyText}
               onChangeText={setKeyText}
               onSubmitEditing={saveKey}
+              onFocus={() => setHasFocus(true)}
+              onBlur={() => setHasFocus(false)}
               secureTextEntry
               autoCapitalize="none"
               autoCorrect={false}
@@ -225,6 +232,8 @@ export function CommandInput() {
           value={text}
           onChangeText={setText}
           onSubmitEditing={submit}
+          onFocus={() => setHasFocus(true)}
+          onBlur={() => setHasFocus(false)}
           returnKeyType="send"
           editable={isDevicePaired && !isLoading}
         />
