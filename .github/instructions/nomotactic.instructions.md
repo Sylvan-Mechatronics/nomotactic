@@ -8,8 +8,8 @@ nomotactic is the user-facing Expo/React Native interface for the nomon robot fl
 
 ## Technology Stack
 
-- **Expo SDK 55** (`expo@^55.0.23`) with `expo-router` file-based routing
-- **React 19 / React Native 0.83** — use built-in components first
+- **Expo SDK 58** (`expo@~58.0.19`) with `expo-router` file-based routing
+- **React 19.3 / React Native 0.88** — use built-in components first
 - **TypeScript strict mode** — all files must pass `tsconfig.json` strict settings
 - **`@react-navigation/bottom-tabs`** and `@react-navigation/native` for tab navigation
 - **Expo modules**: `expo-haptics`, `expo-secure-store`, `expo-image`, `expo-constants`

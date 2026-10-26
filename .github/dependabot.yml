@@ -31,14 +31,14 @@ updates:
       - dependency-name: "react-dom"
       - dependency-name: "react-native"
       - dependency-name: "react-native-*"
-      # `expo install --check` expects jest ~29.7 / @types/jest 29.5 for SDK 57.
+      # `expo install --check` expects jest ~30.5 / @types/jest 30.0 for SDK 58.
       - dependency-name: "jest"
         update-types: ["version-update:semver-major"]
       - dependency-name: "@types/jest"
         update-types: ["version-update:semver-major"]
-      # Expo SDK 57 targets TypeScript ~6.0, and ts-jest 29 rejects TS 7.
+      # Expo SDK 58 targets TypeScript ~6.0, and ts-jest 29 rejects TS 7.
       - dependency-name: "typescript"
         update-types: ["version-update:semver-major"]
-      # eslint-config-expo 57 (via eslint-plugin-import) supports ESLint <= 9.
+      # eslint-config-expo 58 (via eslint-plugin-import) supports ESLint <= 9.
       - dependency-name: "eslint"
         update-types: ["version-update:semver-major"]
