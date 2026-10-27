@@ -3,15 +3,12 @@
  */
 
 import {
-  AiChatMessage,
   clearAiKey,
   describeCommandError,
   getAiKeyStatus,
   isKeyProblem,
-  MAX_HISTORY_MESSAGES,
   sendAiCommand,
   setAiKey,
-  trimHistory,
 } from "@/lib/ai";
 import { ApiRequestError, setDeviceBaseUrl } from "@/lib/api";
 
@@ -32,9 +29,20 @@ function makeErrorResponse(status: number, errorMsg: string): Partial<Response> 
   };
 }
 
-function lastBody(): unknown {
-  const init = mockFetch.mock.calls[0][1];
+function lastBody(call = 0): unknown {
+  const init = mockFetch.mock.calls[call][1];
   return init?.body !== undefined ? JSON.parse(init.body as string) : undefined;
+}
+
+function commandResponse(conversationId = "conv-1") {
+  return {
+    reply: "Driving forward.",
+    actions: [{ tool: "drive", input: { speed_pct: 50 }, ok: true, result: 4 }],
+    model: "claude-opus-4-8",
+    stop_reason: "end_turn",
+    conversation_id: conversationId,
+    timestamp: "t",
+  };
 }
 
 beforeEach(() => {
@@ -47,36 +55,64 @@ beforeEach(() => {
 // ---------------------------------------------------------------------------
 
 describe("sendAiCommand", () => {
-  it("POSTs the conversation and returns the reply with actions", async () => {
-    mockFetch.mockResolvedValueOnce(
-      makeOkResponse({
-        reply: "Driving forward.",
-        actions: [{ tool: "drive", input: { speed_pct: 50 }, ok: true, result: 4 }],
-        model: "claude-opus-4-8",
-        stop_reason: "end_turn",
-        timestamp: "t",
-      }) as Response,
-    );
+  it("POSTs only the new message and returns the reply, actions and conversation id", async () => {
+    mockFetch.mockResolvedValueOnce(makeOkResponse(commandResponse()) as Response);
 
-    const messages: AiChatMessage[] = [{ role: "user", content: "drive forward" }];
-    const resp = await sendAiCommand(messages);
+    const resp = await sendAiCommand("drive forward");
 
     expect(resp.reply).toBe("Driving forward.");
     expect(resp.actions[0].tool).toBe("drive");
     expect(resp.actions[0].ok).toBe(true);
+    expect(resp.conversation_id).toBe("conv-1");
+    expect(resp.contextReset).toBe(false);
     const [url, init] = mockFetch.mock.calls[0];
     expect(url).toBe(`${DEVICE_URL}/api/ai/command`);
     expect(init?.method).toBe("POST");
-    expect(lastBody()).toEqual({ messages: [{ role: "user", content: "drive forward" }] });
+    // No prior turns ever leave the app (review S-24).
+    expect(lastBody()).toEqual({ message: "drive forward" });
+  });
+
+  it("continues a conversation by id", async () => {
+    mockFetch.mockResolvedValueOnce(makeOkResponse(commandResponse("conv-1")) as Response);
+    const resp = await sendAiCommand("now stop", "conv-1");
+    expect(resp.contextReset).toBe(false);
+    expect(lastBody()).toEqual({ message: "now stop", conversation_id: "conv-1" });
+  });
+
+  it("retries once in a new conversation when the device forgot the id (404)", async () => {
+    mockFetch
+      .mockResolvedValueOnce(
+        makeErrorResponse(404, "Conversation not found or expired; start a new one.") as Response,
+      )
+      .mockResolvedValueOnce(makeOkResponse(commandResponse("conv-2")) as Response);
+
+    const resp = await sendAiCommand("now stop", "conv-1");
+
+    expect(resp.contextReset).toBe(true);
+    expect(resp.conversation_id).toBe("conv-2");
+    expect(mockFetch).toHaveBeenCalledTimes(2);
+    expect(lastBody(1)).toEqual({ message: "now stop" });
+  });
+
+  it("does not retry a 404 for a new conversation", async () => {
+    mockFetch.mockResolvedValueOnce(makeErrorResponse(404, "Not Found") as Response);
+    await expect(sendAiCommand("hi")).rejects.toBeInstanceOf(ApiRequestError);
+    expect(mockFetch).toHaveBeenCalledTimes(1);
   });
 
   it("rejects with ApiRequestError carrying the device's error text", async () => {
     mockFetch.mockResolvedValueOnce(
       makeErrorResponse(503, "No AI API key configured. Store one via PUT /api/ai/key.") as Response,
     );
-    await expect(sendAiCommand([{ role: "user", content: "hi" }])).rejects.toBeInstanceOf(
-      ApiRequestError,
+    await expect(sendAiCommand("hi")).rejects.toBeInstanceOf(ApiRequestError);
+  });
+
+  it("passes a busy-conversation 409 through without retrying", async () => {
+    mockFetch.mockResolvedValueOnce(
+      makeErrorResponse(409, "A command is already running in this conversation.") as Response,
     );
+    await expect(sendAiCommand("again", "conv-1")).rejects.toMatchObject({ status: 409 });
+    expect(mockFetch).toHaveBeenCalledTimes(1);
   });
 });
 
@@ -117,44 +153,6 @@ describe("AI key management", () => {
     expect(url).toBe(`${DEVICE_URL}/api/ai/key`);
     expect(init?.method).toBe("DELETE");
     expect(init?.body).toBeUndefined();
-  });
-});
-
-// ---------------------------------------------------------------------------
-// trimHistory
-// ---------------------------------------------------------------------------
-
-function turns(count: number): AiChatMessage[] {
-  return Array.from({ length: count }, (_, i) => ({
-    role: i % 2 === 0 ? ("user" as const) : ("assistant" as const),
-    content: `turn ${i}`,
-  }));
-}
-
-describe("trimHistory", () => {
-  it("returns short histories unchanged", () => {
-    const history = turns(5);
-    expect(trimHistory(history)).toBe(history);
-  });
-
-  it("keeps only the newest messages up to the cap", () => {
-    const trimmed = trimHistory(turns(30));
-    expect(trimmed).toHaveLength(MAX_HISTORY_MESSAGES);
-    expect(trimmed[trimmed.length - 1].content).toBe("turn 29");
-  });
-
-  it("drops a leading assistant turn so the history starts with the user", () => {
-    // 31 alternating turns: slicing the last 20 would start on an assistant turn.
-    const trimmed = trimHistory(turns(31));
-    expect(trimmed[0].role).toBe("user");
-    expect(trimmed[trimmed.length - 1].content).toBe("turn 30");
-    expect(trimmed).toHaveLength(MAX_HISTORY_MESSAGES - 1);
-  });
-
-  it("honours a custom cap", () => {
-    const trimmed = trimHistory(turns(10), 4);
-    expect(trimmed).toHaveLength(4);
-    expect(trimmed[0].role).toBe("user");
   });
 });
 

@@ -2,9 +2,11 @@
  * AI chat-command client: talk to the device's Claude relay.
  *
  * The device endpoint (`POST /api/ai/command`) runs the agentic loop
- * server-side: the app sends the visible conversation (plain text turns,
- * oldest first, ending with the new user message) and renders the reply plus
- * the robot actions the model took. Tool-use blocks never reach the app.
+ * server-side and also holds the conversation history: the app sends only the
+ * new message plus the `conversation_id` the device issued, and renders the
+ * reply plus the robot actions the model took. The app never supplies prior
+ * turns, so it cannot forge what the model "said" (nomothetic review S-24).
+ * Tool-use blocks never reach the app.
  *
  * The Anthropic API key lives on the device (stored in a 0600 file via
  * `/api/ai/key`, or `ANTHROPIC_API_KEY` in the service environment) — it is
@@ -17,12 +19,6 @@ import { ENDPOINTS } from "@/lib/endpoints";
 // ---------------------------------------------------------------------------
 // Types (mirror nomothetic ai_routes request/response models)
 // ---------------------------------------------------------------------------
-
-/** One conversation turn. Turns must alternate and start/end with the user. */
-export interface AiChatMessage {
-  role: "user" | "assistant";
-  content: string;
-}
 
 /** One robot tool call the model made while handling a command. */
 export interface AiActionRecord {
@@ -39,7 +35,19 @@ export interface AiCommandResponse {
   actions: AiActionRecord[];
   model: string;
   stop_reason: string;
+  /** Pass back on the next command to continue this conversation. */
+  conversation_id: string;
   timestamp: string;
+}
+
+/** A command result, noting whether the device had to start a new conversation. */
+export interface AiCommandResult extends AiCommandResponse {
+  /**
+   * True when the conversation id sent was unknown to the device (expired,
+   * evicted, or forgotten by a restart) and the command ran in a fresh
+   * conversation without the earlier context.
+   */
+  contextReset: boolean;
 }
 
 /** Whether the device has an AI key configured — never the key itself. */
@@ -53,12 +61,6 @@ export interface AiKeyStatus {
 // Constants
 // ---------------------------------------------------------------------------
 
-/**
- * Max conversation messages sent per command. The device caps requests at 40
- * messages; the client trims well below that so old context ages out.
- */
-export const MAX_HISTORY_MESSAGES = 20;
-
 /** AI commands run a model loop with tool round trips — allow minutes, not
  * the default 10 s API timeout. */
 export const AI_COMMAND_TIMEOUT_MS = 180_000;
@@ -66,22 +68,6 @@ export const AI_COMMAND_TIMEOUT_MS = 180_000;
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
-
-/**
- * Trim `messages` to at most `max` turns, keeping the newest and preserving
- * the required shape (the first remaining turn must be the user's).
- */
-export function trimHistory(
-  messages: AiChatMessage[],
-  max: number = MAX_HISTORY_MESSAGES,
-): AiChatMessage[] {
-  if (messages.length <= max) return messages;
-  const trimmed = messages.slice(messages.length - max);
-  while (trimmed.length > 0 && trimmed[0].role !== "user") {
-    trimmed.shift();
-  }
-  return trimmed;
-}
 
 /**
  * True when a command failure means "the device needs a (working) Anthropic
@@ -126,13 +112,40 @@ export function describeCommandError(err: unknown): string {
 // Device API calls
 // ---------------------------------------------------------------------------
 
-/** Run one chat command through the device's Claude tool loop. */
-export async function sendAiCommand(messages: AiChatMessage[]): Promise<AiCommandResponse> {
+function postCommand(
+  message: string,
+  conversationId: string | null,
+): Promise<AiCommandResponse> {
   return deviceApi<AiCommandResponse>(ENDPOINTS.AI_COMMAND, {
     method: "POST",
-    body: { messages },
+    body: conversationId === null ? { message } : { message, conversation_id: conversationId },
     timeoutMs: AI_COMMAND_TIMEOUT_MS,
   });
+}
+
+/**
+ * Run one chat command through the device's Claude tool loop.
+ *
+ * @param message The new user message.
+ * @param conversationId The id from the previous response, or null to start a
+ *   new conversation. If the device no longer knows it (404 — expired or
+ *   restarted), the command is retried once in a fresh conversation and the
+ *   result's `contextReset` is set; the 404 costs no model call.
+ */
+export async function sendAiCommand(
+  message: string,
+  conversationId: string | null = null,
+): Promise<AiCommandResult> {
+  try {
+    const resp = await postCommand(message, conversationId);
+    return { ...resp, contextReset: false };
+  } catch (err) {
+    if (conversationId !== null && err instanceof ApiRequestError && err.status === 404) {
+      const resp = await postCommand(message, null);
+      return { ...resp, contextReset: true };
+    }
+    throw err;
+  }
 }
 
 /** Report whether the device has an AI key configured (and its source). */

@@ -1,8 +1,8 @@
 /**
  * CommandInput — persistent AI command bar.
  *
- * Sends the operator's chat to the device's Claude relay (POST /api/ai/command)
- * with the visible conversation as context, renders the reply plus the robot
+ * Sends the operator's chat to the device's Claude relay (POST /api/ai/command),
+ * continuing the device-held conversation by id, renders the reply plus the robot
  * actions the model took (drive, steer, sensor reads, routines, ...), and
  * offers inline Anthropic-key setup when the device reports it has no usable
  * key. The key is stored on the robot, never in the app. See ADR-002.
@@ -29,12 +29,10 @@ import {
 
 import {
     AiActionRecord,
-    AiChatMessage,
     describeCommandError,
     isKeyProblem,
     sendAiCommand,
     setAiKey,
-    trimHistory,
 } from "@/lib/ai";
 import { useAuth } from "@/lib/auth";
 import { borderRadius, colors, spacing } from "@/lib/theme";
@@ -56,6 +54,8 @@ interface Exchange {
   actions: AiActionRecord[];
   /** True when the command arrived by voice — replies are spoken unless muted. */
   viaVoice: boolean;
+  /** True when the robot had forgotten the conversation and started a new one. */
+  contextReset: boolean;
 }
 
 /** Compact ✓/✕ chips for the robot actions taken while handling a command. */
@@ -84,7 +84,10 @@ export function CommandInput() {
   // the (possibly offline/unreachable) device URL and look like it did nothing.
   const { isDevicePaired } = useAuth();
   const [text, setText] = useState("");
-  const [history, setHistory] = useState<AiChatMessage[]>([]);
+  // The device holds the conversation history (review S-24); the app keeps
+  // only its id and a count for the "Conversation: N exchanges" row.
+  const [conversationId, setConversationId] = useState<string | null>(null);
+  const [exchangeCount, setExchangeCount] = useState(0);
   const [exchange, setExchange] = useState<Exchange | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
@@ -114,11 +117,16 @@ export function CommandInput() {
     setIsLoading(true);
     setError(null);
     setNotice(null);
-    const messages = trimHistory([...history, { role: "user", content: trimmed }]);
     try {
-      const resp = await sendAiCommand(messages);
-      setExchange({ reply: resp.reply, actions: resp.actions, viaVoice });
-      setHistory([...messages, { role: "assistant", content: resp.reply }]);
+      const resp = await sendAiCommand(trimmed, conversationId);
+      setExchange({
+        reply: resp.reply,
+        actions: resp.actions,
+        viaVoice,
+        contextReset: resp.contextReset,
+      });
+      setConversationId(resp.conversation_id);
+      setExchangeCount(resp.contextReset ? 1 : exchangeCount + 1);
       setText("");
       if (viaVoice && !repliesMuted) speak(resp.reply);
     } catch (err) {
@@ -210,7 +218,9 @@ export function CommandInput() {
 
   function clearConversation() {
     stopSpeaking();
-    setHistory([]);
+    // Forgetting the id is enough: the robot's copy ages out on its own.
+    setConversationId(null);
+    setExchangeCount(0);
     setExchange(null);
     setError(null);
     setNotice(null);
@@ -306,6 +316,11 @@ export function CommandInput() {
             <Text style={styles.responseText}>{notice}</Text>
           ) : exchange !== null ? (
             <>
+              {exchange.contextReset && (
+                <Text style={styles.contextNote}>
+                  Earlier context expired on the robot — continuing as a new conversation.
+                </Text>
+              )}
               <Text style={styles.responseText}>{exchange.reply}</Text>
               <ActionChips actions={exchange.actions} />
               {exchange.viaVoice && (
@@ -332,7 +347,7 @@ export function CommandInput() {
         </View>
       )}
 
-      {history.length > 0 && !isLoading && (
+      {exchangeCount > 0 && !isLoading && (
         <Pressable
           onPress={clearConversation}
           style={styles.clearRow}
@@ -340,8 +355,8 @@ export function CommandInput() {
           accessibilityLabel="Clear conversation"
         >
           <Text style={styles.clearText}>
-            Conversation: {Math.ceil(history.length / 2)} exchange
-            {history.length > 2 ? "s" : ""} · Clear
+            Conversation: {exchangeCount} exchange
+            {exchangeCount > 1 ? "s" : ""} · Clear
           </Text>
         </Pressable>
       )}
@@ -467,6 +482,11 @@ const styles = StyleSheet.create({
   muteText: {
     color: colors.textMuted,
     fontSize: 12,
+  },
+  contextNote: {
+    color: colors.textMuted,
+    fontSize: 12,
+    marginBottom: spacing.xs,
   },
   clearRow: {
     marginBottom: spacing.sm,

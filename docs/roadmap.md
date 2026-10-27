@@ -605,14 +605,18 @@ the manual controls.
 
 **Delivered:**
 - [x] `lib/ai.ts` — typed client for the device relay:
-      `sendAiCommand(messages)` (long 180 s timeout — the loop can span several
-      provider round trips), key management (`getAiKeyStatus` / `setAiKey` /
-      `clearAiKey`), `trimHistory` (client-side context cap under the device's
-      40-message limit), and `isKeyProblem` (distinguishes "needs a key" /
-      "key rejected" failures from provider outages).
+      `sendAiCommand(message, conversationId)` (long 180 s timeout — the loop
+      can span several provider round trips), key management
+      (`getAiKeyStatus` / `setAiKey` / `clearAiKey`), and `isKeyProblem`
+      (distinguishes "needs a key" / "key rejected" failures from provider
+      outages). Since 2026-10-26 (nomothetic review S-24) the device holds the
+      conversation: the app sends only the new message plus the device-issued
+      `conversation_id`, and retries once in a fresh conversation if the
+      device answers 404 (expired or restarted), flagging `contextReset`.
 - [x] `components/CommandInput.tsx` — rewired from the Phase 1.6 stub:
-  - Sends the visible conversation (plain-text turns) so follow-ups have
-    context; successful exchanges extend the history, "Clear" resets it.
+  - Continues the device-held conversation by id so follow-ups have
+    context; "Clear" forgets the id (the device copy ages out). A one-line
+    note above the reply says when the robot had to start over.
   - Response bubble renders the reply plus ✓/✕ **action chips** for every
     robot action the model took (drive, steer, sensor reads, routines, ...).
   - Inline Anthropic-key setup appears when the device reports a key problem;
