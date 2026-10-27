@@ -13,6 +13,7 @@
 
 import { AudioModule, RecordingPresets, setAudioModeAsync } from "expo-audio";
 import type { RecordingOptions } from "expo-audio";
+import { File } from "expo-file-system";
 import * as Speech from "expo-speech";
 import { Platform } from "react-native";
 
@@ -90,12 +91,11 @@ export async function transcribeAudio(uri: string): Promise<string> {
     const blob = await (await fetch(uri)).blob();
     form.append("audio", blob, "clip.webm");
   } else {
-    // React Native FormData takes a file descriptor object, not a Blob.
-    form.append("audio", {
-      uri,
-      name: "clip.m4a",
-      type: "audio/m4a",
-    } as unknown as Blob);
+    // Expo SDK 58 makes expo/fetch the global fetch. Its multipart encoder
+    // rejects React Native's `{ uri, name, type }` descriptor (it throws before
+    // sending, which used to surface as "Couldn't reach the robot") but accepts
+    // an expo-file-system File, which implements Blob.
+    form.append("audio", new File(uri));
   }
   const resp = await deviceApi<TranscribeResponse>(ENDPOINTS.AI_TRANSCRIBE, {
     method: "POST",

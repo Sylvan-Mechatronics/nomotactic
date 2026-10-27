@@ -133,6 +133,22 @@ describe("transcribeAudio", () => {
     expect(headers["Content-Type"]).toBeUndefined();
   });
 
+  it("uploads the recording as a Blob on native, not a { uri } descriptor", async () => {
+    // expo/fetch (the global fetch since SDK 58) throws on RN's { uri, name,
+    // type } parts before sending; only Blob-like parts (expo-file-system File)
+    // get encoded.
+    mockFetch.mockResolvedValueOnce(
+      makeOkResponse({ text: "turn left", engine: "vosk", timestamp: "t" }) as Response,
+    );
+
+    await transcribeAudio("file:///tmp/clip.m4a");
+
+    const form = mockFetch.mock.calls[0][1]?.body as FormData;
+    const part = form.get("audio");
+    expect(part).toBeInstanceOf(Blob);
+    expect((part as Blob).type).toBe("audio/mp4");
+  });
+
   it("returns empty text for silence (a success, not an error)", async () => {
     mockFetch.mockResolvedValueOnce(
       makeOkResponse({ text: "", engine: "vosk", timestamp: "t" }) as Response,

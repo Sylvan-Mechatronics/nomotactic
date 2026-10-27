@@ -26,6 +26,7 @@ module.exports = {
     "^@/(.*)$": "<rootDir>/$1",
     "^react-native$": "<rootDir>/tests/__mocks__/react-native.js",
     "^expo-audio$": "<rootDir>/tests/__mocks__/expo-audio.js",
+    "^expo-file-system$": "<rootDir>/tests/__mocks__/expo-file-system.js",
     "^expo-speech$": "<rootDir>/tests/__mocks__/expo-speech.js",
   },
 };
