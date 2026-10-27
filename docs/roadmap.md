@@ -16,14 +16,14 @@
 | 8 | Device Fleet Registration | ✅ Complete |
 | 15 | Soft AP / WiFi Provisioning | ✅ Complete (cross-repo; see nomopractic ADR-005) |
 | 4 | Fleet Management Dashboard | ✅ Complete (cross-repo; see nomothetic Phase 25) |
-| 3 | AI Integration | 🔶 Chat + actions complete (cross-repo; see nomothetic Phase 26); suggestions & voice deferred |
+| 3 | AI Integration | 🔶 Chat + actions + voice complete (cross-repo; see nomothetic Phases 26 & 28); suggestions & richer rendering deferred |
 
 ---
 
 ## Current State
 
 Phases 1, 2, 2.1, and 2.2 are complete (BLE phases superseded by Phase 15 — Wi-Fi Soft AP). The app has:
-- Expo SDK 54 with expo-router navigation
+- Expo SDK 58 with expo-router navigation
 - Dark theme, typed API client with auth injection and 401 retry guard
 - JWT auth flow with expo-secure-store (mobile) / sessionStorage refresh + memory-only access tokens (web)
 - Device control dashboard with 5 expandable card components
@@ -32,6 +32,9 @@ Phases 1, 2, 2.1, and 2.2 are complete (BLE phases superseded by Phase 15 — Wi
 - Connection state indicator with auto-reconnect
 - AI command bar wired to the device's Claude relay (chat with conversation
   context, robot action chips, inline on-robot API-key setup)
+- Voice commands: mic button records with expo-audio, the robot transcribes
+  (nomothetic Phase 28), the transcript auto-sends, replies are spoken
+  (expo-speech) with a mute toggle — works in Expo Go and on web (ADR-004)
 - Guest mode: unauthenticated users can pair via Soft AP without an account
 - Local device registry: Soft-AP-paired devices appear on the dashboard with a "Local" badge
 - `npx expo lint` clean
@@ -602,14 +605,18 @@ the manual controls.
 
 **Delivered:**
 - [x] `lib/ai.ts` — typed client for the device relay:
-      `sendAiCommand(messages)` (long 180 s timeout — the loop can span several
-      provider round trips), key management (`getAiKeyStatus` / `setAiKey` /
-      `clearAiKey`), `trimHistory` (client-side context cap under the device's
-      40-message limit), and `isKeyProblem` (distinguishes "needs a key" /
-      "key rejected" failures from provider outages).
+      `sendAiCommand(message, conversationId)` (long 180 s timeout — the loop
+      can span several provider round trips), key management
+      (`getAiKeyStatus` / `setAiKey` / `clearAiKey`), and `isKeyProblem`
+      (distinguishes "needs a key" / "key rejected" failures from provider
+      outages). Since 2026-10-26 (nomothetic review S-24) the device holds the
+      conversation: the app sends only the new message plus the device-issued
+      `conversation_id`, and retries once in a fresh conversation if the
+      device answers 404 (expired or restarted), flagging `contextReset`.
 - [x] `components/CommandInput.tsx` — rewired from the Phase 1.6 stub:
-  - Sends the visible conversation (plain-text turns) so follow-ups have
-    context; successful exchanges extend the history, "Clear" resets it.
+  - Continues the device-held conversation by id so follow-ups have
+    context; "Clear" forgets the id (the device copy ages out). A one-line
+    note above the reply says when the robot had to start over.
   - Response bubble renders the reply plus ✓/✕ **action chips** for every
     robot action the model took (drive, steer, sensor reads, routines, ...).
   - Inline Anthropic-key setup appears when the device reports a key problem;
@@ -620,9 +627,22 @@ the manual controls.
 - [x] Tests: `tests/lib/ai.test.ts` (fetch-mocked, mirroring the other lib
       suites) — request shapes, history trimming, key-problem detection.
 
+**Delivered in the voice follow-up (2026-07-09, cross-repo with nomothetic
+Phase 28; see ADR-004):**
+- [x] Voice input (tap-to-speak): `lib/voice.ts` records with expo-audio,
+      uploads to the robot's `POST /api/ai/transcribe` (multipart, device JWT,
+      new `formData` option in `lib/api.ts`), and the transcript auto-sends
+      through the normal command path. Mic button with Listening/Transcribing
+      states in `CommandInput`; hidden when the platform can't record.
+- [x] Spoken replies: voice-initiated replies are read aloud with expo-speech,
+      with an inline mute toggle; speech stops when a new command starts.
+- [x] Tests: `tests/lib/voice.test.ts` (fetch-mocked upload, error mapping,
+      speak gating; expo modules mocked via jest moduleNameMapper).
+- [x] Works in Expo Go and on web — expo-audio/expo-speech are official Expo
+      modules, no dev build required.
+
 **Deferred to a follow-up:**
 - [ ] Context-aware command suggestions
-- [ ] Voice input option (tap-to-speak)
 - [ ] Richer response rendering (tables, structured device state)
 
 ### Phase 4 — Fleet Management Dashboard ✅ Complete

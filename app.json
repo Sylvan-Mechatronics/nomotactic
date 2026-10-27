@@ -2,7 +2,7 @@
   "expo": {
     "name": "nomotactic",
     "slug": "nomotactic",
-    "version": "0.5.1",
+    "version": "0.6.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
     "scheme": "nomotactic",
@@ -54,7 +54,13 @@
       "expo-font",
       "expo-secure-store",
       "expo-image",
-      "expo-status-bar"
+      "expo-status-bar",
+      [
+        "expo-audio",
+        {
+          "microphonePermission": "Allow $(PRODUCT_NAME) to use the microphone for voice commands."
+        }
+      ]
     ],
     "experiments": {
       "typedRoutes": true,
